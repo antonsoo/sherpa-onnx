@@ -36,6 +36,7 @@ static bool EncodeBase(const std::vector<std::string> &lines,
   bool has_thresholds = false;
   bool has_phrases = false;
   bool has_oov = false;
+  bool has_invalid_number = false;
 
   for (const auto &line : lines) {
     float score = 0;
@@ -50,11 +51,23 @@ static bool EncodeBase(const std::vector<std::string> &lines,
       } else {
         switch (word[0]) {
           case ':':  // boosting score for current keyword
-            score = std::stof(word.substr(1));
+            if (!ConvertStringToReal(word.substr(1), &score)) {
+              SHERPA_ONNX_LOGE("Invalid boosting score %s at line: %s",
+                               word.c_str(), line.c_str());
+              score = 0;
+              has_invalid_number = true;
+              break;
+            }
             has_scores = true;
             break;
           case '#':  // triggering threshold (probability) for current keyword
-            threshold = std::stof(word.substr(1));
+            if (!ConvertStringToReal(word.substr(1), &threshold)) {
+              SHERPA_ONNX_LOGE("Invalid triggering threshold %s at line: %s",
+                               word.c_str(), line.c_str());
+              threshold = 0;
+              has_invalid_number = true;
+              break;
+            }
             has_thresholds = true;
             break;
           case '@':  // the original keyword string
@@ -98,7 +111,7 @@ static bool EncodeBase(const std::vector<std::string> &lines,
       thresholds->clear();
     }
   }
-  return !has_oov;
+  return !has_oov && !has_invalid_number;
 }
 
 bool EncodeHotwords(std::istream &is, const std::string &modeling_unit,
@@ -191,6 +204,11 @@ bool EncodeHotwords(std::istream &is, const std::string &modeling_unit,
           }
         }
       }
+    }
+    if (oss.str().empty()) {
+      // e.g., the phrase contains only invalid UTF-8 bytes
+      SHERPA_ONNX_LOGE("Skip hotword with no tokens: %s", line.c_str());
+      continue;
     }
     std::string encoded_phrase = oss.str().substr(1);
     oss.clear();

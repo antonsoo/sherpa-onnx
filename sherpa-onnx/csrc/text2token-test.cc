@@ -169,4 +169,47 @@ TEST(TEXT2TOKEN, TEST_bbpe) {
   EXPECT_EQ(scores, expected_scores);
 }
 
+TEST(TEXT2TOKEN, TEST_invalid_score_or_threshold) {
+  SymbolTable sym_table("H 1\nE 2\nL 3\nO 4\n", false);
+
+  for (const char *line :
+       {"H E L L O #", "H E L L O :high", "H E L L O :1e99"}) {
+    std::istringstream iss(line);
+    std::vector<std::vector<int32_t>> ids;
+    std::vector<std::string> keywords;
+    std::vector<float> scores;
+    std::vector<float> thresholds;
+    EXPECT_FALSE(
+        EncodeKeywords(iss, sym_table, &ids, &keywords, &scores, &thresholds))
+        << line;
+  }
+
+  std::istringstream iss("H E L L O :2.5 #0.25");
+  std::vector<std::vector<int32_t>> ids;
+  std::vector<std::string> keywords;
+  std::vector<float> scores;
+  std::vector<float> thresholds;
+  EXPECT_TRUE(
+      EncodeKeywords(iss, sym_table, &ids, &keywords, &scores, &thresholds));
+  EXPECT_EQ(ids, (std::vector<std::vector<int32_t>>{{1, 2, 3, 3, 4}}));
+  EXPECT_EQ(scores, std::vector<float>{2.5});
+  EXPECT_EQ(thresholds, std::vector<float>{0.25});
+}
+
+TEST(TEXT2TOKEN, TEST_hotwords_invalid_score_or_no_tokens) {
+  SymbolTable sym_table("\xe4\xbd\xa0 1\n\xe5\xa5\xbd 2\n", false);  // 你 好
+
+  // An empty score, a line with only an invalid UTF-8 byte, a valid line
+  std::istringstream iss(
+      "\xe4\xbd\xa0\xe5\xa5\xbd :\n"
+      "\x80\n"
+      "\xe4\xbd\xa0\xe5\xa5\xbd :2.0\n");
+  std::vector<std::vector<int32_t>> ids;
+  std::vector<float> scores;
+  EXPECT_FALSE(
+      EncodeHotwords(iss, "cjkchar", sym_table, nullptr, &ids, &scores));
+  EXPECT_EQ(ids, (std::vector<std::vector<int32_t>>{{1, 2}, {1, 2}}));
+  EXPECT_EQ(scores, (std::vector<float>{0, 2.0}));
+}
+
 }  // namespace sherpa_onnx
