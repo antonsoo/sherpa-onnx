@@ -92,7 +92,7 @@ class CharacterLexicon::Impl {
     std::regex punct_re4("[!]");
     s = std::regex_replace(s, punct_re4, "！");
 
-    std::vector<std::string> words = SplitUtf8(text);
+    std::vector<std::string> words = SplitUtf8(s);
 
     if (debug_) {
 #if __OHOS__
